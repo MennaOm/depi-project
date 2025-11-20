@@ -492,7 +492,17 @@ pipeline {
     
     post {
         always {
-            echo "🏁 Pipeline completed"
+            script {
+                if (params.PIPELINE_ACTION == 'docker-only' || params.PIPELINE_ACTION == 'full-deploy') {
+                    bat 'docker logout 2>nul || echo Already logged out'
+                }
+                
+                // Cleanup test resources
+                bat '''
+                    kubectl delete pod test-curl 2>nul || echo "Test pod already cleaned up"
+                    taskkill /F /IM kubectl.exe 2>nul || echo "No kubectl port-forward running"
+                '''
+            }
         }
         
         success {
@@ -548,6 +558,18 @@ pipeline {
         failure {
             echo '❌❌❌ Pipeline failed! ❌❌❌'
             echo 'Check the logs above for error details'
+            script {
+                // Send notification or log failure details
+                bat '''
+                    echo "Failed pipeline stage detected"
+                    kubectl get events --sort-by=.lastTimestamp -n hotel-app | tail -10
+                '''
+            }
+        }
+        
+        unstable {
+            echo '⚠️⚠️⚠️ Pipeline completed with warnings ⚠️⚠️⚠️'
+            echo 'Some security scans may have found issues'
         }
     }
 }
