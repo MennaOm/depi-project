@@ -45,8 +45,6 @@ data:
           target_label: namespace
         - source_labels: [__meta_kubernetes_service_name]
           target_label: service
-        - source_labels: [__meta_kubernetes_pod_name]
-          target_label: pod
       
       # Scrape Hotel App Frontend  
       - job_name: 'hotel-frontend'

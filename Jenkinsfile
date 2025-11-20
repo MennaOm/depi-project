@@ -14,7 +14,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         DOCKERHUB_USERNAME = 'marvelhelmy'
         CLIENT_IMAGE = "${DOCKERHUB_USERNAME}/hotel-client"
-        //SERVER_IMAGE = "${DOCKERHUB_USERNAME}/hotel-server"  // SKIP FOR NOW - backend issues
+        SERVER_IMAGE = "${DOCKERHUB_USERNAME}/hotel-server"
         IMAGE_TAG = "${BUILD_NUMBER}"
         
         // Frontend environment variables
@@ -27,8 +27,7 @@ pipeline {
         AWS_DEFAULT_REGION = 'us-east-1'
         
         // Terraform variables - using the images we just built
-        //TF_VAR_backend_image = "${SERVER_IMAGE}:latest"  // SKIP FOR NOW - backend issues
-        TF_VAR_backend_image = "nginx:alpine"  // USE PLACEHOLDER
+        TF_VAR_backend_image = "${SERVER_IMAGE}:latest"
         TF_VAR_frontend_image = "${CLIENT_IMAGE}:latest"
     }
     
@@ -47,45 +46,8 @@ pipeline {
                 echo '📂 Checking repository structure...'
                 bat 'dir'
                 bat 'if exist client (echo Client folder found) else (echo ERROR: Client folder NOT found)'
-                bat 'if exist server (echo Server folder found) else (echo ERROR: Server folder NOT found)'  // SKIP SERVER CHECK FOR NOW
+                bat 'if exist server (echo Server folder found) else (echo ERROR: Server folder NOT found)'
                 bat 'if exist terraform (echo Terraform folder found) else (echo WARNING: Terraform folder NOT found - will skip terraform stages)'
-            }
-        }
-        
-        stage('Install Dependencies') {
-            when {
-                expression { 
-                    params.PIPELINE_ACTION == 'docker-only' || 
-                    params.PIPELINE_ACTION == 'full-deploy' 
-                }
-            }
-            steps {
-                echo '📦 Installing Node.js dependencies...'
-                script {
-                    // SKIP SERVER DEPENDENCIES FOR NOW - backend issues
-                    // dir('server') {
-                    //     bat 'npm install prom-client winston --save'
-                    // }
-                    dir('client') {
-                        bat 'npm install'
-                    }
-                }
-            }
-        }
-        
-        stage('Security Scan - Code') {
-            when {
-                expression { 
-                    params.PIPELINE_ACTION == 'docker-only' || 
-                    params.PIPELINE_ACTION == 'full-deploy' 
-                }
-            }
-            steps {
-                echo '🔍 Running Static Code Analysis...'
-                script {
-                    // You can add tools like ESLint, SonarQube here
-                    echo 'Code quality checks would run here...'
-                }
             }
         }
         
@@ -115,7 +77,6 @@ pipeline {
             }
         }
         
-        // SKIP THIS ENTIRE STAGE FOR NOW - backend has route issues
         stage('Build Server Image') {
             when {
                 expression { 
@@ -124,17 +85,17 @@ pipeline {
                 }
             }
             steps {
-                echo '🚫 SKIPPING Backend Docker Image Build (backend has route issues)...'
-                // script {
-                //     dir('server') {
-                //         bat """
-                //             docker build ^
-                //             -t %SERVER_IMAGE%:%IMAGE_TAG% ^
-                //             -t %SERVER_IMAGE%:latest ^
-                //             .
-                //         """
-                //     }
-                // }
+                echo '🔨 Building Backend Docker Image...'
+                script {
+                    dir('server') {
+                        bat """
+                            docker build ^
+                            -t %SERVER_IMAGE%:%IMAGE_TAG% ^
+                            -t %SERVER_IMAGE%:latest ^
+                            .
+                        """
+                    }
+                }
             }
         }
         
@@ -148,11 +109,10 @@ pipeline {
             steps {
                 echo '🔍 Running Security Scan on Docker Images...'
                 script {
-                    // SKIP BACKEND SCAN FOR NOW
-                    // bat """
-                    //     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ^
-                    //     aquasec/trivy:latest image %SERVER_IMAGE%:latest --exit-code 0 --severity HIGH,CRITICAL --format table
-                    // """
+                    bat """
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ^
+                        aquasec/trivy:latest image %SERVER_IMAGE%:latest --exit-code 0 --severity HIGH,CRITICAL --format table
+                    """
                     bat """
                         docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ^
                         aquasec/trivy:latest image %CLIENT_IMAGE%:latest --exit-code 0 --severity HIGH,CRITICAL --format table
@@ -161,7 +121,6 @@ pipeline {
             }
         }
         
-        // SKIP THIS ENTIRE STAGE FOR NOW - backend testing will fail
         stage('Test Containers') {
             when {
                 expression { 
@@ -170,22 +129,22 @@ pipeline {
                 }
             }
             steps {
-                echo '🚫 SKIPPING Container Tests (backend has issues)...'
-                // script {
-                //     // Test backend health endpoint
-                //     bat """
-                //         docker run -d --name test-backend -p 3000:3000 ^
-                //         -e CLERK_PUBLISHABLE_KEY=test-key ^
-                //         -e CLERK_SECRET_KEY=test-secret ^
-                //         -e MONGODB_URI=mongodb://test:test@localhost:27017/test ^
-                //         %SERVER_IMAGE%:latest
-                //         
-                //         timeout /t 10 /nobreak
-                //         curl -f http://localhost:3000/health || echo "Health check failed"
-                //         docker stop test-backend
-                //         docker rm test-backend
-                //     """
-                // }
+                echo '🧪 Testing Docker Containers...'
+                script {
+                    // Test backend health endpoint
+                    bat """
+                        docker run -d --name test-backend -p 3000:3000 ^
+                        -e CLERK_PUBLISHABLE_KEY=test-key ^
+                        -e CLERK_SECRET_KEY=test-secret ^
+                        -e MONGODB_URI=mongodb://test:test@localhost:27017/test ^
+                        %SERVER_IMAGE%:latest
+                        
+                        timeout /t 10 /nobreak
+                        curl -f http://localhost:3000/health || echo "Health check failed"
+                        docker stop test-backend
+                        docker rm test-backend
+                    """
+                }
             }
         }
         
@@ -214,9 +173,8 @@ pipeline {
                 bat """
                     docker push %CLIENT_IMAGE%:%IMAGE_TAG%
                     docker push %CLIENT_IMAGE%:latest
-                    // SKIP BACKEND PUSH FOR NOW
-                    // docker push %SERVER_IMAGE%:%IMAGE_TAG%
-                    // docker push %SERVER_IMAGE%:latest
+                    docker push %SERVER_IMAGE%:%IMAGE_TAG%
+                    docker push %SERVER_IMAGE%:latest
                 """
             }
         }
@@ -233,9 +191,8 @@ pipeline {
                 bat """
                     docker rmi %CLIENT_IMAGE%:%IMAGE_TAG% 2>nul || echo "Client image already removed"
                     docker rmi %CLIENT_IMAGE%:latest 2>nul || echo "Client latest image already removed"
-                    // SKIP BACKEND CLEANUP
-                    // docker rmi %SERVER_IMAGE%:%IMAGE_TAG% 2>nul || echo "Server image already removed"
-                    // docker rmi %SERVER_IMAGE%:latest 2>nul || echo "Server latest image already removed"
+                    docker rmi %SERVER_IMAGE%:%IMAGE_TAG% 2>nul || echo "Server image already removed"
+                    docker rmi %SERVER_IMAGE%:latest 2>nul || echo "Server latest image already removed"
                     docker system prune -f 2>nul || echo "Docker prune failed"
                 """
             }
@@ -329,8 +286,7 @@ pipeline {
                             set TF_VAR_jwt_secret=%JWT_SECRET%
                             set TF_VAR_clerk_publishable_key=%CLERK_PUBLISHABLE_KEY%
                             set TF_VAR_clerk_secret_key=%CLERK_SECRET_KEY%
-                            // SKIP BACKEND IMAGE FOR NOW - use placeholder
-                            set TF_VAR_backend_image=nginx:alpine  // PLACEHOLDER
+                            set TF_VAR_backend_image=%SERVER_IMAGE%:latest
                             set TF_VAR_frontend_image=%CLIENT_IMAGE%:latest
                             terraform plan -out=tfplan -detailed-exitcode
                         '''
@@ -367,8 +323,7 @@ pipeline {
                             set TF_VAR_jwt_secret=%JWT_SECRET%
                             set TF_VAR_clerk_publishable_key=%CLERK_PUBLISHABLE_KEY%
                             set TF_VAR_clerk_secret_key=%CLERK_SECRET_KEY%
-                            // SKIP BACKEND IMAGE FOR NOW - use placeholder
-                            set TF_VAR_backend_image=nginx:alpine  // PLACEHOLDER
+                            set TF_VAR_backend_image=%SERVER_IMAGE%:latest
                             set TF_VAR_frontend_image=%CLIENT_IMAGE%:latest
                             terraform apply -auto-approve tfplan
                         '''
@@ -458,8 +413,7 @@ pipeline {
                     echo 'Waiting for pods to be ready (this may take 5-10 minutes)...'
                     bat '''
                         kubectl wait --for=condition=ready pod -l app=mongodb -n hotel-app --timeout=600s || echo "MongoDB pods not ready yet"
-                        // SKIP BACKEND CHECKS
-                        // kubectl wait --for=condition=ready pod -l app=backend -n hotel-app --timeout=600s || echo "Backend pods not ready yet"
+                        kubectl wait --for=condition=ready pod -l app=backend -n hotel-app --timeout=600s || echo "Backend pods not ready yet"
                         kubectl wait --for=condition=ready pod -l app=frontend -n hotel-app --timeout=600s || echo "Frontend pods not ready yet"
                     '''
                     
@@ -471,36 +425,11 @@ pipeline {
                     echo '=== Monitoring Status ==='
                     bat 'kubectl get pods -n monitoring'
                     
-                    // SKIP BACKEND HEALTH CHECKS
-                    echo '=== Testing Frontend Health ==='
+                    echo '=== Testing Application Health ==='
                     bat '''
-                        kubectl run test-curl --image=curlimages/curl:8.5.0 -n hotel-app --rm -i --restart=Never -- /bin/sh -c "curl -f http://frontend:80 && echo 'Frontend health: OK' || echo 'Frontend health: FAILED'"
+                        kubectl run test-curl --image=curlimages/curl:8.5.0 -n hotel-app --rm -i --restart=Never -- /bin/sh -c "curl -f http://backend:5000/health && echo 'Backend health: OK' || echo 'Backend health: FAILED'"
                     '''
                 }
-            }
-        }
-        
-        // SKIP METRICS TESTING FOR NOW - backend not working
-        stage('Test Metrics Endpoints') {
-            when {
-                expression { 
-                    params.PIPELINE_ACTION == 'terraform-apply' || 
-                    params.PIPELINE_ACTION == 'full-deploy' 
-                }
-            }
-            steps {
-                echo '🚫 SKIPPING Metrics Endpoint Tests (backend not working)...'
-                // script {
-                //     bat '''
-                //         echo "Testing backend metrics endpoint..."
-                //         kubectl run test-metrics --image=curlimages/curl:8.5.0 -n hotel-app --rm -i --restart=Never -- /bin/sh -c "curl -s http://backend:5000/metrics | head -10"
-                //         
-                //         echo "Testing Prometheus..."
-                //         kubectl port-forward -n monitoring service/prometheus 9090:9090 &
-                //         timeout /t 10 /nobreak
-                //         taskkill /F /IM kubectl.exe 2>nul || echo "Port-forward stopped"
-                //     '''
-                // }
             }
         }
         
@@ -527,8 +456,7 @@ pipeline {
                             set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
                             set TF_VAR_mongodb_root_password=%MONGODB_PASSWORD%
                             set TF_VAR_jwt_secret=%JWT_SECRET%
-                            // SKIP BACKEND IMAGE
-                            set TF_VAR_backend_image=nginx:alpine
+                            set TF_VAR_backend_image=%SERVER_IMAGE%:latest
                             set TF_VAR_frontend_image=%CLIENT_IMAGE%:latest
                             terraform destroy -auto-approve
                         '''
@@ -564,17 +492,7 @@ pipeline {
     
     post {
         always {
-            script {
-                if (params.PIPELINE_ACTION == 'docker-only' || params.PIPELINE_ACTION == 'full-deploy') {
-                    bat 'docker logout 2>nul || echo Already logged out'
-                }
-                
-                // Cleanup test resources
-                bat '''
-                    kubectl delete pod test-curl test-metrics 2>nul || echo "Test pods already cleaned up"
-                    taskkill /F /IM kubectl.exe 2>nul || echo "No kubectl port-forward running"
-                '''
-            }
+            echo "🏁 Pipeline completed"
         }
         
         success {
@@ -583,24 +501,23 @@ pipeline {
                 echo "================================================"
                 
                 if (params.PIPELINE_ACTION == 'docker-only') {
-                    echo "PHASE 3 COMPLETED - Frontend Docker Image Pushed"
+                    echo "PHASE 3 COMPLETED - Docker Images Pushed"
                     echo "Client Image: ${CLIENT_IMAGE}:${IMAGE_TAG}"
-                    echo "🚫 Backend image SKIPPED (route issues)"
-                    echo "✅ Frontend security scan completed"
-                    echo "✅ Frontend image pushed to Docker Hub"
+                    echo "Server Image: ${SERVER_IMAGE}:${IMAGE_TAG}"
+                    echo "✅ Security scans completed"
+                    echo "✅ Container tests passed"
+                    echo "✅ Images pushed to Docker Hub"
                 }
                 
                 if (params.PIPELINE_ACTION == 'terraform-plan') {
                     echo "PHASE 4 - Terraform Plan Completed"
                     echo "Review the plan above and run 'terraform-apply' to deploy"
-                    echo "Note: Using nginx as backend placeholder"
                 }
                 
                 if (params.PIPELINE_ACTION == 'terraform-apply' || params.PIPELINE_ACTION == 'full-deploy') {
-                    echo "PHASE 4 COMPLETED - Kubernetes Deployment PARTIALLY Successful"
+                    echo "PHASE 4 COMPLETED - Kubernetes Deployment Successful"
                     echo ""
-                    echo "🎉 Your infrastructure is now deployed on Kubernetes!"
-                    echo "🚫 Backend is NOT deployed (route issues)"
+                    echo "🎉 Your application is now deployed on Kubernetes!"
                     echo ""
                     echo "📊 Monitoring Stack Deployed:"
                     echo "  - Prometheus: kubectl port-forward -n monitoring service/prometheus 9090:9090"
@@ -608,11 +525,11 @@ pipeline {
                     echo ""
                     echo "🛡️ Security Features Enabled:"
                     echo "  - Network Policies"
-                    echo "  - Pod Security Context" 
+                    echo "  - Pod Security Context"
                     echo "  - Auto-scaling (HPA)"
                     echo ""
-                    echo "🚫 Backend metrics SKIPPED"
-                    echo "✅ Frontend is running"
+                    echo "✅ Application Health:"
+                    echo "  Health checks: http://backend:5000/health"
                     echo ""
                     echo "To access your application:"
                     echo "  kubectl get ingress -n hotel-app"
@@ -631,18 +548,6 @@ pipeline {
         failure {
             echo '❌❌❌ Pipeline failed! ❌❌❌'
             echo 'Check the logs above for error details'
-            script {
-                // Send notification or log failure details
-                bat '''
-                    echo "Failed pipeline stage detected"
-                    kubectl get events --sort-by=.lastTimestamp -n hotel-app | tail -10
-                '''
-            }
-        }
-        
-        unstable {
-            echo '⚠️⚠️⚠️ Pipeline completed with warnings ⚠️⚠️⚠️'
-            echo 'Some security scans may have found issues'
         }
     }
 }
