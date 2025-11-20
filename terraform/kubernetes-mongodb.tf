@@ -61,9 +61,25 @@ resource "kubernetes_stateful_set" "mongodb" {
       }
 
       spec {
+        # POD-LEVEL SECURITY CONTEXT (MongoDB needs root for data directory)
+        security_context {
+          fs_group = 1000
+        }
+
         container {
           name  = "mongodb"
           image = var.mongodb_image
+
+          # CONTAINER-LEVEL SECURITY CONTEXT (MongoDB specific)
+          security_context {
+            allow_privilege_escalation = false
+            capabilities {
+              drop = ["ALL"]
+            }
+            # MongoDB needs to run as root to manage its data directory
+            run_as_user = 0
+            run_as_non_root = false
+          }
 
           port {
             container_port = 27017

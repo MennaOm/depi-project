@@ -37,10 +37,28 @@ resource "kubernetes_deployment" "frontend" {
       }
 
       spec {
+        # POD-LEVEL SECURITY CONTEXT
+        security_context {
+          run_as_non_root = true
+          run_as_user     = 1000
+          run_as_group    = 1000
+          fs_group        = 1000
+        }
         container {
           name  = "frontend"
           image = var.frontend_image
           image_pull_policy = "Always"
+
+          # CONTAINER-LEVEL SECURITY CONTEXT
+          security_context {
+            allow_privilege_escalation = false
+            capabilities {
+              drop = ["ALL"]
+            }
+            read_only_root_filesystem = true
+            run_as_non_root          = true
+            run_as_user              = 101  # nginx typically runs as user 101
+          }
 
           port {
             container_port = 80
@@ -95,6 +113,16 @@ resource "kubernetes_deployment" "frontend" {
         init_container {
           name  = "wait-for-backend"
           image = "busybox:1.35"
+
+          # INIT CONTAINER SECURITY CONTEXT
+          security_context {
+            allow_privilege_escalation = false
+            capabilities {
+              drop = ["ALL"]
+            }
+            run_as_non_root = true
+            run_as_user     = 1000
+          }
           command = [
             "sh",
             "-c",
