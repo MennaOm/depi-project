@@ -491,85 +491,68 @@ pipeline {
     }
     
     post {
-        always {
-            script {
-                if (params.PIPELINE_ACTION == 'docker-only' || params.PIPELINE_ACTION == 'full-deploy') {
-                    bat 'docker logout 2>nul || echo Already logged out'
-                }
-                
-                // Cleanup test resources
-                bat '''
-                    kubectl delete pod test-curl 2>nul || echo "Test pod already cleaned up"
-                    taskkill /F /IM kubectl.exe 2>nul || echo "No kubectl port-forward running"
-                '''
+    always {
+        echo "🏁 Pipeline execution completed"
+    }
+    
+    success {
+        script {
+            echo '✅✅✅ Pipeline completed successfully! ✅✅✅'
+            echo "================================================"
+            
+            if (params.PIPELINE_ACTION == 'docker-only') {
+                echo "PHASE 3 COMPLETED - Docker Images Pushed"
+                echo "Client Image: ${CLIENT_IMAGE}:${IMAGE_TAG}"
+                echo "Server Image: ${SERVER_IMAGE}:${IMAGE_TAG}"
+                echo "✅ Security scans completed"
+                echo "✅ Container tests passed"
+                echo "✅ Images pushed to Docker Hub"
             }
-        }
-        
-        success {
-            script {
-                echo '✅✅✅ Pipeline completed successfully! ✅✅✅'
-                echo "================================================"
-                
-                if (params.PIPELINE_ACTION == 'docker-only') {
-                    echo "PHASE 3 COMPLETED - Docker Images Pushed"
-                    echo "Client Image: ${CLIENT_IMAGE}:${IMAGE_TAG}"
-                    echo "Server Image: ${SERVER_IMAGE}:${IMAGE_TAG}"
-                    echo "✅ Security scans completed"
-                    echo "✅ Container tests passed"
-                    echo "✅ Images pushed to Docker Hub"
-                }
-                
-                if (params.PIPELINE_ACTION == 'terraform-plan') {
-                    echo "PHASE 4 - Terraform Plan Completed"
-                    echo "Review the plan above and run 'terraform-apply' to deploy"
-                }
-                
-                if (params.PIPELINE_ACTION == 'terraform-apply' || params.PIPELINE_ACTION == 'full-deploy') {
-                    echo "PHASE 4 COMPLETED - Kubernetes Deployment Successful"
-                    echo ""
-                    echo "🎉 Your application is now deployed on Kubernetes!"
-                    echo ""
-                    echo "📊 Monitoring Stack Deployed:"
-                    echo "  - Prometheus: kubectl port-forward -n monitoring service/prometheus 9090:9090"
-                    echo "  - Grafana: kubectl port-forward -n monitoring service/grafana 3000:3000"
-                    echo ""
-                    echo "🛡️ Security Features Enabled:"
-                    echo "  - Network Policies"
-                    echo "  - Pod Security Context"
-                    echo "  - Auto-scaling (HPA)"
-                    echo ""
-                    echo "✅ Application Health:"
-                    echo "  Health checks: http://backend:5000/health"
-                    echo ""
-                    echo "To access your application:"
-                    echo "  kubectl get ingress -n hotel-app"
-                }
-                
-                if (params.PIPELINE_ACTION == 'terraform-destroy') {
-                    echo "TERRAFORM DESTROY COMPLETED"
-                    echo "All AWS resources have been destroyed"
-                    echo "Your AWS bill will stop accumulating charges"
-                }
-                
-                echo "================================================"
+            
+            if (params.PIPELINE_ACTION == 'terraform-plan') {
+                echo "PHASE 4 - Terraform Plan Completed"
+                echo "Review the plan above and run 'terraform-apply' to deploy"
             }
-        }
-        
-        failure {
-            echo '❌❌❌ Pipeline failed! ❌❌❌'
-            echo 'Check the logs above for error details'
-            script {
-                // Send notification or log failure details
-                bat '''
-                    echo "Failed pipeline stage detected"
-                    kubectl get events --sort-by=.lastTimestamp -n hotel-app | tail -10
-                '''
+            
+            if (params.PIPELINE_ACTION == 'terraform-apply' || params.PIPELINE_ACTION == 'full-deploy') {
+                echo "PHASE 4 COMPLETED - Kubernetes Deployment Successful"
+                echo ""
+                echo "🎉 Your application is now deployed on Kubernetes!"
+                echo ""
+                echo "📊 Monitoring Stack Deployed:"
+                echo "  - Prometheus: kubectl port-forward service/prometheus 9090:9090 -n hotel-app"
+                echo "  - Grafana: kubectl port-forward service/grafana 3000:3000 -n hotel-app"
+                echo ""
+                echo "🛡️ Security Features Enabled:"
+                echo "  - Network Policies"
+                echo "  - Pod Security Context"
+                echo "  - Auto-scaling (HPA)"
+                echo ""
+                echo "✅ Application Health:"
+                echo "  Health checks: http://backend:5000/health"
+                echo ""
+                echo "To access your application:"
+                echo "  kubectl get ingress -n hotel-app"
             }
-        }
-        
-        unstable {
-            echo '⚠️⚠️⚠️ Pipeline completed with warnings ⚠️⚠️⚠️'
-            echo 'Some security scans may have found issues'
+            
+            if (params.PIPELINE_ACTION == 'terraform-destroy') {
+                echo "TERRAFORM DESTROY COMPLETED"
+                echo "All AWS resources have been destroyed"
+                echo "Your AWS bill will stop accumulating charges"
+            }
+            
+            echo "================================================"
         }
     }
+    
+    failure {
+        echo '❌❌❌ Pipeline failed! ❌❌❌'
+        echo 'Check the logs above for error details'
+    }
+    
+    unstable {
+        echo '⚠️⚠️⚠️ Pipeline completed with warnings ⚠️⚠️⚠️'
+        echo 'Some security scans may have found issues'
+    }
+}
 }
